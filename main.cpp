@@ -1,10 +1,13 @@
 #include <bitset> 
 #include <iostream>
+#include <unordered_map>
 
 using cells16 =  unsigned short int;
+class Node; 
+
 
 typedef union {
-    void *ptr;
+    Node *ptr;
     cells16 raw; 
 } nodeptr; 
 
@@ -35,132 +38,156 @@ class Node {
     public: 
         int depth;
         nodeptr nw, ne, sw, se; 
-        nodeptr next, res; 
-        Node(void*, void*, void*, void*, int);
-        Node(int);
+        nodeptr res; 
+
+        mutable long int hash; 
+
+        Node(nodeptr, nodeptr, nodeptr, nodeptr, int);
+        Node(cells16, cells16, cells16, cells16);
+        Node(Node*, Node*, Node*, Node*, int);
+
         virtual void eval();
         virtual void display();
-};
 
-class Leaf : public Node {
-    public: 
-        Leaf (cells16 nw, cells16 ne, cells16 sw, cells16 se) : Node(2) {
-            this->nw.raw = nw;
-            this->ne.raw = ne;
-            this->sw.raw = sw;
-            this->se.raw = se; 
-        }
-        virtual void eval() {
-            std::cout << "Evaluating as leaf!" << std::endl;
 
-            cells16 stream =  (cells16) join_leaf(nw.raw, ne.raw, sw.raw, se.raw);   
-            std::bitset<16> x(stream);
-            std::cout << x << std::endl;
-
-            int _nw = life8(stream & 0b1110111011100000, 10);
-            int _ne = life8(stream & 0b0111011101110000, 9);
-            int _sw = life8(stream & 0b0000111011101110, 6);
-            int _se = life8(stream & 0b0000011101110111, 5); 
-
-            this->res.raw =  ((((((_nw << 1) | _ne) << 1) | _sw) << 1) | _se);
-        }
-        virtual void display() {
-            cells16 stream =  (cells16) join_leaf(nw.raw, ne.raw, sw.raw, se.raw);   
-            std::bitset<4> r1(stream >> 12);
-            std::bitset<4> r2((stream << 4) >> 12);
-            std::bitset<4> r3((stream << 8) >> 12);
-            std::bitset<4> r4((stream << 12) >> 12 );
-
-            std::cout << std::endl << r1 <<std::endl << r2 << std::endl << r3 << std::endl << r4 << std::endl;
+        bool operator == (const Node &other) const { 
+            if(depth == 2) {
+                return (   this->nw.raw == other.nw.raw \
+                        && this->ne.raw == other.ne.raw \
+                        && this->sw.raw == other.sw.raw \
+                        && this->se.raw == other.se.raw );
+            } else {
+                return (   this->nw.ptr == other.nw.ptr \
+                        && this->ne.ptr == other.ne.ptr \
+                        && this->sw.ptr == other.sw.ptr \
+                        && this->se.ptr == other.se.ptr );
+            }
         }
 };
 
-Node::Node(void *nw, void *ne, void *sw, void *se, int depth) {
+namespace std {
+
+  template <>
+  struct hash<Node>
+  {
+    std::size_t operator()(const Node& node) const 
+    {
+      using std::size_t;
+      using std::hash;
+      using std::string;
+
+      // Compute individual hash values for first,
+      // second and third and combine them using XOR
+      // and bit shifting:
+      int nw_hash = node.nw.ptr->hash ? node.depth != 2 : node.nw.raw; 
+      int ne_hash = node.ne.ptr->hash ? node.depth != 2 : node.ne.raw; 
+      int sw_hash = node.sw.ptr->hash ? node.depth != 2 : node.sw.raw; 
+      int se_hash = node.se.ptr->hash ? node.depth != 2 : node.se.raw; 
+
+      
+      node.hash = (hash<int>()(nw_hash) \
+                ^ (((hash<int>()(ne_hash) << 1)) >> 1)\
+                ^ (hash<int>()(sw_hash) << 1)\
+                ^ (hash<int>()(se_hash) << 2));
+      return node.hash;
+    }
+  };
+}
+
+std::unordered_map<Node, Node*> HASHTABLE;
+
+Node::Node(nodeptr nw, nodeptr ne, nodeptr sw, nodeptr se, int depth) {
+    this->nw = nw;  
+    this->ne = ne; 
+    this->sw = sw; 
+    this->se = se; 
+    this->depth = depth;
+}
+
+Node::Node(cells16 nw, cells16 ne, cells16 sw, cells16 se) {
+    this->nw.raw = nw;  
+    this->ne.raw = ne; 
+    this->sw.raw = sw; 
+    this->se.raw = se; 
+    this->depth = 2;
+}
+Node::Node(Node* nw, Node* ne, Node* sw, Node* se, int depth) {
     this->nw.ptr = nw;  
     this->ne.ptr = ne; 
     this->sw.ptr = sw; 
     this->se.ptr = se; 
     this->depth = depth;
 }
-        
-Node::Node(int depth) {
-    this->depth = depth;
-}
 
-void Node::display() {}
 void Node::eval() {
-    std::cout << "Evaluating as node!" << std::endl;
 
-    Node* nw_ptr = (Node *)this->nw.ptr;
-    Node* ne_ptr = (Node *)this->ne.ptr;
-    Node* sw_ptr = (Node *)this->sw.ptr;
-    Node* se_ptr = (Node *)this->se.ptr;
-
-    nw_ptr->eval();
-    ne_ptr->eval();
-    sw_ptr->eval();
-    se_ptr->eval();
     
     //create temporary squares
     if(this->depth == 3) {
-        Leaf nm = Leaf(nw_ptr->ne.raw, ne_ptr->nw.raw,  nw_ptr->se.raw, ne_ptr->sw.raw);
+            std::cout << "Evaluating as node!" << std::endl;
+
+        Node* nw_ptr = this->nw.ptr;
+        Node* ne_ptr = this->ne.ptr;
+        Node* sw_ptr = this->sw.ptr;
+        Node* se_ptr = this->se.ptr;
+
+        nw_ptr->eval();
+        ne_ptr->eval();
+        sw_ptr->eval();
+        se_ptr->eval();
+        Node nm = Node(nw_ptr->ne, ne_ptr->nw,  nw_ptr->se, ne_ptr->sw, depth - 1);
         nm.eval();
 
-        Leaf wm = Leaf(nw_ptr->sw.raw, nw_ptr->se.raw,  sw_ptr->nw.raw, sw_ptr->ne.raw);
+        Node wm = Node(nw_ptr->sw, nw_ptr->se,  sw_ptr->nw, sw_ptr->ne, depth - 1);
         wm.eval();
 
-        Leaf em = Leaf(ne_ptr->sw.raw, ne_ptr->se.raw,  se_ptr->nw.raw, se_ptr->ne.raw);
+        Node em = Node(ne_ptr->sw, ne_ptr->se,  se_ptr->nw, se_ptr->ne, depth - 1);
         em.eval();
 
-        Leaf sm = Leaf(sw_ptr->ne.raw, se_ptr->nw.raw,  sw_ptr->se.raw, se_ptr->sw.raw);
+        Node sm = Node(sw_ptr->ne, se_ptr->nw,  sw_ptr->se, se_ptr->sw, depth - 1);
         sm.eval(); 
 
-        Leaf cc = Leaf(nw_ptr->se.raw, ne_ptr->sw.raw,  sw_ptr->ne.raw, se_ptr->nw.raw);
+        Node cc = Node(nw_ptr->se, ne_ptr->sw,  sw_ptr->ne, se_ptr->nw, depth - 1);
         cc.eval();
         
         //compute inner squiare
-        Leaf nw_inner = Leaf(nw_ptr->res.raw, nm.res.raw, wm.res.raw, cc.res.raw);
+        Node nw_inner = Node(nw_ptr->res, nm.res, wm.res, cc.res, depth - 1);
             nw_inner.eval();
-        Leaf ne_inner = Leaf(nm.res.raw, ne_ptr->res.raw, cc.res.raw, em.res.raw);
+        Node ne_inner = Node(nm.res, ne_ptr->res, cc.res, em.res, depth - 1);
             ne_inner.eval();
-        Leaf sw_inner = Leaf(wm.res.raw, cc.res.raw, sw_ptr->res.raw, sm.res.raw);
+        Node sw_inner = Node(wm.res, cc.res, sw_ptr->res, sm.res, depth - 1);
             sw_inner.eval();
-        Leaf se_inner = Leaf(cc.res.raw, em.res.raw, sm.res.raw, se_ptr->res.raw);
+        Node se_inner = Node(cc.res, em.res, sm.res, se_ptr->res, depth - 1);
             se_inner.eval();
 
-        Leaf res = Leaf(nw_inner.res.raw, ne_inner.res.raw, sw_inner.res.raw, se_inner.res.raw);
-        this->res.ptr = (void *) &res;
-        ((Leaf *) this->res.ptr)->display();
+        Node *res = new Node(nw_inner.res, ne_inner.res, sw_inner.res, se_inner.res, depth - 1);
+        this->res.ptr = res;
+        this->res.ptr->display();
 
     } else {
-        // Node nm = Node(nw_ptr->ne, ne_ptr->nw,  nw_ptr->se, ne_ptr->sw);
-        // nm.eval();
+    	std::cout << "Evaluating as leaf!" << std::endl;
+        std::cout << this->nw.ptr << std::endl; 
+        std::cout << this->nw.raw << std::endl; 
+		cells16 stream =  (cells16) join_leaf(this->nw.raw, this->ne.raw, this->sw.raw, this->se.raw);   
+		std::bitset<16> x(stream);
+		std::cout << x << std::endl;
 
-        // Node wm = Node(nw_ptr->sw, nw_ptr->se , sw_ptr->nw, sw_ptr->ne );
-        // wm.eval();
+		int _nw = life8(stream & 0b1110111011100000, 10);
+		int _ne = life8(stream & 0b0111011101110000, 9);
+		int _sw = life8(stream & 0b0000111011101110, 6);
+		int _se = life8(stream & 0b0000011101110111, 5); 
 
-        // Node em = Node(ne_ptr->sw , ne_ptr->se ,  se_ptr->nw , se_ptr->ne );
-        // em.eval();
-
-        // Node sm = Node(sw_ptr->ne , se_ptr->nw ,  sw_ptr->se , se_ptr->sw );
-        // sm.eval(); 
-
-        // Leaf cc = Leaf(nw_ptr->se , ne_ptr->sw ,  sw_ptr->ne , se_ptr->nw );
-        // cc.eval();
-        
-        // //compute inner squiare
-        // Leaf nw_inner = Leaf(nw_ptr->res.raw, nm.res.raw, wm.res.raw, cc.res.raw);
-        //     nw_inner.eval();
-        // Leaf ne_inner = Leaf(nm.res.raw, ne_ptr->res.raw, cc.res.raw, em.res.raw);
-        //     ne_inner.eval();
-        // Leaf sw_inner = Leaf(wm.res.raw, cc.res.raw, sw_ptr->res.raw, sm.res.raw);
-        //     sw_inner.eval();
-        // Leaf se_inner = Leaf(cc.res.raw, em.res.raw, sm.res.raw, se_ptr->res.raw);
-        //     se_inner.eval();
-
-        // Leaf res = Leaf(nw_inner.res.raw, ne_inner.res.raw, sw_inner.res.raw, se_inner.res.raw);
-        // res.display();
+		this->res.raw =  ((((((_nw << 1) | _ne) << 1) | _sw) << 1) | _se);
     }
+}
+void Node::display() {
+    cells16 stream =  (cells16) join_leaf(nw.raw, ne.raw, sw.raw, se.raw);   
+    std::bitset<4> r1(stream >> 12);
+    std::bitset<4> r2((stream << 4) >> 12);
+    std::bitset<4> r3((stream << 8) >> 12);
+    std::bitset<4> r4((stream << 12) >> 12 );
+
+    std::cout << std::endl << r1 <<std::endl << r2 << std::endl << r3 << std::endl << r4 << std::endl;
 }
 
 // void Node::eval() {
@@ -173,18 +200,35 @@ void Node::eval() {
 11  11
 00  00
 */
+
+
 int main() {
-    Leaf nw = Leaf( 0b0000,  0b0000, 0b0000, 0b0010);
-    Leaf ne = Leaf( 0b0000, 0b0000, 0b1010, 0b0000);
-    Leaf sw = Leaf( 0b0000,  0b0100, 0b0000, 0b0000);
-    Leaf se = Leaf(  0b1000, 0b0000, 0b0000, 0b0000);
-    Node test_node =  Node((void *) &nw, (void *) &ne, (void *) &sw, (void *) &se, 3);
+    
+    Node nw = Node( 0b0000,  0b0000, 0b0000, 0b0010);
+    Node ne = Node( 0b0000, 0b0000, 0b1010, 0b0000);
+    Node sw = Node( 0b0000,  0b0100, 0b0000, 0b0000);
+    Node se = Node(  0b1000, 0b0000, 0b0000, 0b0000);
+    Node test_node =  Node(&nw, &ne, &sw, &se, 3);
+    Node test_node2 =  Node(&nw, &ne, &sw, &se, 3);
+
+
     test_node.eval();
+
+    std::cout << test_node.res.ptr << std::endl;
+    HASHTABLE.insert({test_node, test_node.res.ptr});
+
+    std::cout << "asd" << std::endl;
+    std::cout << HASHTABLE.at(test_node2) << std::endl;
+    Node* res =  HASHTABLE.at(test_node2);
+
+    res->display();
+   
+
+
 }
 
 
 class hashtable {
     void *hash_start;
     void *hash_end; 
-
-}
+};
