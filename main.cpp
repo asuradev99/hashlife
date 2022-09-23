@@ -79,12 +79,19 @@ namespace std {
       // Compute individual hash values for first,
       // second and third and combine them using XOR
       // and bit shifting:
-      int nw_hash = node.nw.ptr->hash ? node.depth != 2 : node.nw.raw; 
-      int ne_hash = node.ne.ptr->hash ? node.depth != 2 : node.ne.raw; 
-      int sw_hash = node.sw.ptr->hash ? node.depth != 2 : node.sw.raw; 
-      int se_hash = node.se.ptr->hash ? node.depth != 2 : node.se.raw; 
 
-      
+      int nw_hash, ne_hash, sw_hash, se_hash;     
+      if(node.depth == 2) {
+        nw_hash = node.nw.raw; 
+        ne_hash = node.ne.raw; 
+        sw_hash = node.sw.raw; 
+        se_hash = node.se.raw; 
+      } else {
+        nw_hash = node.nw.ptr->hash; 
+        ne_hash = node.ne.ptr->hash; 
+        sw_hash = node.sw.ptr->hash; 
+        se_hash = node.se.ptr->hash; 
+      }
       node.hash = (hash<int>()(nw_hash) \
                 ^ (((hash<int>()(ne_hash) << 1)) >> 1)\
                 ^ (hash<int>()(sw_hash) << 1)\
@@ -94,7 +101,7 @@ namespace std {
   };
 }
 
-std::unordered_map<Node, Node*> HASHTABLE;
+std::unordered_map<Node, nodeptr> HASHTABLE;
 
 Node::Node(nodeptr nw, nodeptr ne, nodeptr sw, nodeptr se, int depth) {
     this->nw = nw;  
@@ -124,63 +131,88 @@ void Node::eval() {
     
     //create temporary squares
     if(this->depth == 3) {
-            std::cout << "Evaluating as node!" << std::endl;
+        std::cout << "Evaluating as node!" << std::endl;
+        try {
+            this->res = HASHTABLE.at(*this);
+            std::cout << "Found matching node value! " << std::endl;
 
-        Node* nw_ptr = this->nw.ptr;
-        Node* ne_ptr = this->ne.ptr;
-        Node* sw_ptr = this->sw.ptr;
-        Node* se_ptr = this->se.ptr;
+        } catch (const std::out_of_range& oor) {
+            std::cout << "Failed to find hash (as node)" << std::endl;
 
-        nw_ptr->eval();
-        ne_ptr->eval();
-        sw_ptr->eval();
-        se_ptr->eval();
-        Node nm = Node(nw_ptr->ne, ne_ptr->nw,  nw_ptr->se, ne_ptr->sw, depth - 1);
-        nm.eval();
+            Node* nw_ptr = this->nw.ptr;
+            Node* ne_ptr = this->ne.ptr;
+            Node* sw_ptr = this->sw.ptr;
+            Node* se_ptr = this->se.ptr;
 
-        Node wm = Node(nw_ptr->sw, nw_ptr->se,  sw_ptr->nw, sw_ptr->ne, depth - 1);
-        wm.eval();
+            nw_ptr->eval();
+            ne_ptr->eval();
+            sw_ptr->eval();
+            se_ptr->eval();
+            Node nm = Node(nw_ptr->ne, ne_ptr->nw,  nw_ptr->se, ne_ptr->sw, depth - 1);
+            nm.eval();
 
-        Node em = Node(ne_ptr->sw, ne_ptr->se,  se_ptr->nw, se_ptr->ne, depth - 1);
-        em.eval();
+            Node wm = Node(nw_ptr->sw, nw_ptr->se,  sw_ptr->nw, sw_ptr->ne, depth - 1);
+            wm.eval();
 
-        Node sm = Node(sw_ptr->ne, se_ptr->nw,  sw_ptr->se, se_ptr->sw, depth - 1);
-        sm.eval(); 
+            Node em = Node(ne_ptr->sw, ne_ptr->se,  se_ptr->nw, se_ptr->ne, depth - 1);
+            em.eval();
 
-        Node cc = Node(nw_ptr->se, ne_ptr->sw,  sw_ptr->ne, se_ptr->nw, depth - 1);
-        cc.eval();
-        
-        //compute inner squiare
-        Node nw_inner = Node(nw_ptr->res, nm.res, wm.res, cc.res, depth - 1);
-            nw_inner.eval();
-        Node ne_inner = Node(nm.res, ne_ptr->res, cc.res, em.res, depth - 1);
-            ne_inner.eval();
-        Node sw_inner = Node(wm.res, cc.res, sw_ptr->res, sm.res, depth - 1);
-            sw_inner.eval();
-        Node se_inner = Node(cc.res, em.res, sm.res, se_ptr->res, depth - 1);
-            se_inner.eval();
+            Node sm = Node(sw_ptr->ne, se_ptr->nw,  sw_ptr->se, se_ptr->sw, depth - 1);
+            sm.eval(); 
 
-        Node *res = new Node(nw_inner.res, ne_inner.res, sw_inner.res, se_inner.res, depth - 1);
-        this->res.ptr = res;
+            Node cc = Node(nw_ptr->se, ne_ptr->sw,  sw_ptr->ne, se_ptr->nw, depth - 1);
+            cc.eval();
+            
+            //compute inner squiare
+            Node nw_inner = Node(nw_ptr->res, nm.res, wm.res, cc.res, depth - 1);
+                nw_inner.eval();
+            Node ne_inner = Node(nm.res, ne_ptr->res, cc.res, em.res, depth - 1);
+                ne_inner.eval();
+            Node sw_inner = Node(wm.res, cc.res, sw_ptr->res, sm.res, depth - 1);
+                sw_inner.eval();
+            Node se_inner = Node(cc.res, em.res, sm.res, se_ptr->res, depth - 1);
+                se_inner.eval();
+
+            Node *res_ = new Node(nw_inner.res, ne_inner.res, sw_inner.res, se_inner.res, depth - 1);
+
+            this->res.ptr = res_;
+            std::cout << this->res.ptr << std::endl;
+
+            HASHTABLE.insert({*this, this->res});
+            std::cout << "insertion completed successfully (node)";
+        }
         this->res.ptr->display();
 
     } else {
-    	std::cout << "Evaluating as leaf!" << std::endl;
-        std::cout << this->nw.ptr << std::endl; 
-        std::cout << this->nw.raw << std::endl; 
-		cells16 stream =  (cells16) join_leaf(this->nw.raw, this->ne.raw, this->sw.raw, this->se.raw);   
-		std::bitset<16> x(stream);
-		std::cout << x << std::endl;
+        try {
+            std::cout << "Evaluating as leaf!" << std::endl;
+            this->res = HASHTABLE.at(*this);
+            std::cout << "Found matching has, value: " << this->res.raw << std::endl;
 
-		int _nw = life8(stream & 0b1110111011100000, 10);
-		int _ne = life8(stream & 0b0111011101110000, 9);
-		int _sw = life8(stream & 0b0000111011101110, 6);
-		int _se = life8(stream & 0b0000011101110111, 5); 
+        } catch (const std::out_of_range& oor) {
+            std::cout << "Failed to find hash (as leaf)" << std::endl;
 
-		this->res.raw =  ((((((_nw << 1) | _ne) << 1) | _sw) << 1) | _se);
+            cells16 stream =  (cells16) join_leaf(this->nw.raw, this->ne.raw, this->sw.raw, this->se.raw);   
+            std::bitset<16> x(stream);
+            std::cout << x << std::endl;
+
+            int _nw = life8(stream & 0b1110111011100000, 10);
+            int _ne = life8(stream & 0b0111011101110000, 9);
+            int _sw = life8(stream & 0b0000111011101110, 6);
+            int _se = life8(stream & 0b0000011101110111, 5); 
+
+            this->res.raw =  ((((((_nw << 1) | _ne) << 1) | _sw) << 1) | _se);
+        
+            HASHTABLE.insert({*this, this->res});
+            std::cout << "insertion completed successfullly (leaf)" << std::endl;
+        }
     }
 }
 void Node::display() {
+    if (this->depth != 2) {
+        std::cout << "bruh ur trying to print from a node of depth 3 or bigger" << std::endl;
+        return;
+    }
     cells16 stream =  (cells16) join_leaf(nw.raw, ne.raw, sw.raw, se.raw);   
     std::bitset<4> r1(stream >> 12);
     std::bitset<4> r2((stream << 4) >> 12);
@@ -202,26 +234,36 @@ void Node::display() {
 */
 
 
+#include <execinfo.h>
+#include <stdlib.h>
+#include <signal.h>
+#include <unistd.h>
 int main() {
-    
     Node nw = Node( 0b0000,  0b0000, 0b0000, 0b0010);
     Node ne = Node( 0b0000, 0b0000, 0b1010, 0b0000);
     Node sw = Node( 0b0000,  0b0100, 0b0000, 0b0000);
     Node se = Node(  0b1000, 0b0000, 0b0000, 0b0000);
     Node test_node =  Node(&nw, &ne, &sw, &se, 3);
-    Node test_node2 =  Node(&nw, &ne, &sw, &se, 3);
+
+
+    Node nw2 = Node( 0b0000,  0b0000, 0b0000, 0b0010);
+    Node ne2 = Node( 0b0000, 0b0000, 0b1010, 0b0000);
+    Node sw2 = Node( 0b0000,  0b0100, 0b0000, 0b0000);
+    Node se2 = Node(  0b1000, 0b0000, 0b0000, 0b0000);
+    Node test_node2 =  Node(&nw2, &ne2, &sw2, &se2, 3);
 
 
     test_node.eval();
+    
+    std::cout << "2nd test node:" << std::endl;
 
-    std::cout << test_node.res.ptr << std::endl;
-    HASHTABLE.insert({test_node, test_node.res.ptr});
+    test_node2.eval();
 
-    std::cout << "asd" << std::endl;
-    std::cout << HASHTABLE.at(test_node2) << std::endl;
-    Node* res =  HASHTABLE.at(test_node2);
+//    nw.res.ptr = &nw;
+//     std::cout << "added " << &nw << std::endl;
+//     HASHTABLE.insert({nw, nw.res});
 
-    res->display();
+
    
 
 
