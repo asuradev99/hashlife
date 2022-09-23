@@ -37,10 +37,10 @@ bool life8(cells16 neighbor_bits, int center_bit) {
 class Node {
     public: 
         int depth;
-        nodeptr nw, ne, sw, se; 
+        mutable nodeptr nw, ne, sw, se; 
         nodeptr res; 
 
-        Node* parent; 
+         Node* parent; 
 
         mutable long int hash; 
 
@@ -48,7 +48,7 @@ class Node {
         Node(cells16, cells16, cells16, cells16);
         Node(Node*, Node*, Node*, Node*, int);
 
-        virtual void eval();
+        Node* eval();
         virtual void display();
 
 
@@ -63,20 +63,13 @@ class Node {
                         && this->ne.raw == other.ne.raw \
                         && this->sw.raw == other.sw.raw \
                         && this->se.raw == other.se.raw );
-            } else if(depth == 3){
+            } else {
                 std::cout << "Foudn potential match of depth 3" << std::endl;
                 //could be a reason for incorrect results if gol has more than one parent gen per child gen
-                return (   this->nw.ptr->res.raw == other.nw.ptr->res.raw\
-                        && this->ne.ptr->res.raw == other.ne.ptr->res.raw \
-                        && this->sw.ptr->res.raw == other.sw.ptr->res.raw\
-                        && this->se.ptr->res.raw == other.se.ptr->res.raw);
-            } else {
-                std::cout << "Foudn potential match eeeeeeeeeeeeeeeeeeeeeeeeeee" << std::endl;
-                //could be a reason for incorrect results if gol has more than one parent gen per child gen
-                return (   this->nw.ptr->res.ptr == other.nw.ptr->res.ptr \
-                        && this->ne.ptr->res.ptr == other.ne.ptr->res.ptr \
-                        && this->sw.ptr->res.ptr == other.sw.ptr->res.ptr\
-                        && this->se.ptr->res.ptr == other.se.ptr->res.ptr);
+                return (   this->nw.ptr == other.nw.ptr\
+                        && this->ne.ptr == other.ne.ptr \
+                        && this->sw.ptr == other.sw.ptr\
+                        && this->se.ptr == other.se.ptr);
             }
         }
 };
@@ -125,7 +118,7 @@ namespace std {
   };
 }
 
-std::unordered_map<Node, nodeptr> HASHTABLE;
+std::unordered_map<Node, Node*> HASHTABLE;
 
 // Node::Node(nodeptr nw, nodeptr ne, nodeptr sw, nodeptr se, int depth) {
 //     this->nw = nw;  
@@ -153,37 +146,39 @@ Node::Node(Node* nw, Node* ne, Node* sw, Node* se, int depth) {
     this->hash = 0;
 }
 
-void Node::eval() {
-
-    
+Node* Node::eval() {
+     
     //create temporary squares
-    if(this->depth == 3) {
-        std::cout << "Evaluating as node!" << std::endl;
+    if(this->depth > 2) {
         
-        Node* nw_ptr = this->nw.ptr;
-        Node* ne_ptr = this->ne.ptr;
-        Node* sw_ptr = this->sw.ptr;
-        Node* se_ptr = this->se.ptr;
+        std::cout << "Evaluating as node!" << std::endl;
 
         std::cout << "Main node test before children hash:" << this->hash << std::endl; 
 
-        nw_ptr->eval();
-        ne_ptr->eval();
-        sw_ptr->eval();
-        se_ptr->eval();
+        this->nw.ptr = this->nw.ptr->eval();
+        this->ne.ptr = this->ne.ptr->eval();
+        this->sw.ptr = this->sw.ptr->eval();
+        this->se.ptr = this->se.ptr->eval();
+    }
 
-        try {
-            this->res = HASHTABLE.at(*this);
-            std::cout << "Found matching node value! " << std::endl;
+    auto search = HASHTABLE.find(*this);
 
-        } catch (const std::out_of_range& oor) {
+    if(search  != HASHTABLE.end()) {
+        std::cout << "Found matching node / leaf value at address: ! " << search->second << std::endl;
+        return search->second;
+    } else {
+        if (depth > 2) {
+            Node* nw_ptr = this->nw.ptr;
+            Node* ne_ptr = this->ne.ptr;
+            Node* sw_ptr = this->sw.ptr;
+            Node* se_ptr = this->se.ptr;
             std::cout << std::endl << "Main node test after children hash: " << this->hash << std::endl; 
 
             std::cout << "Failed to find hash (as node)" << std::endl;
-           int n = HASHTABLE.bucket_count();
+            int n = HASHTABLE.bucket_count();
             std::cout << "umap has " << n << " buckets.\n\n";
- 
-         // Count no. of elements in each bucket using
+
+            // Count no. of elements in each bucket using
             // bucket_size(position)
             for (int i = 0; i < n; i++) {
                 std::cout << "Bucket " << i << " has "
@@ -217,27 +212,14 @@ void Node::eval() {
             Node *res_ = new Node(nw_inner.res.ptr, ne_inner.res.ptr, sw_inner.res.ptr, se_inner.res.ptr, depth - 1);
 
             this->res.ptr = res_;
-            HASHTABLE.insert({*this, this->res});
+            HASHTABLE.insert({*this, this});
             std::cout << "insertion completed successfully (node)" <<  std::endl << std::endl << std::endl;
-        }
-        this->res.ptr->display();
+                        std::cout << "My address: " << this << std::endl;
 
-    } else {
+            return this;
+        } else {
             cells16 stream =  (cells16) join_leaf(this->nw.raw, this->ne.raw, this->sw.raw, this->se.raw);   
 
-             std::bitset<16> x(stream);
-            std::cout << "Leaf contents: " << x << std::endl;
-        try {
-            std::cout << "Evaluating as leaf!" << std::endl;
-
-            //std::hash<Node> hashm = std::hash<Node>();
-            std::cout << "Leaf node test before  hash:" << this->hash << std::endl; 
-            this->res = HASHTABLE.at(*this);
-            std::cout << "Leaf node test after  hash:" << this->hash << std::endl; 
-
-            std::cout << "Found matching has, value: " << this->res.raw << std::endl;
-
-        } catch (const std::out_of_range& oor) {
             std::cout << "Failed to find hash (as leaf)" << std::endl;
             std::cout << "after hash (leaf)" << this->hash << std::endl;
 
@@ -250,14 +232,15 @@ void Node::eval() {
 
             this->res.raw =  ((((((_nw << 1) | _ne) << 1) | _sw) << 1) | _se);
         
-            HASHTABLE.insert({*this, this->res});
+            HASHTABLE.insert({*this, this});
             std::cout << "insertion completed successfullly (leaf) with hash " << this->hash << std::endl ;
+
+
+            std::cout << "My address: " << this << std::endl;
+            
+            return this;
         }
-        std::cout << "Final hash (leaf)" << this->hash << std::endl;
-
     }
-       std::cout << "Bucket count: " << HASHTABLE.bucket_count() << std::endl << std::endl;
-
 }
 void Node::display() {
     if (this->depth != 2) {
@@ -311,21 +294,23 @@ int main() {
 
 
     Node nw2 = Node( 0b0000,  0b0000, 0b0000, 0b0010);
-    Node ne2 = Node( 0b0000, 0b0000, 0b1010, 0b0000);
+    Node ne2 = Node( 0b0000, 0b0100, 0b1010, 0b0000);
     Node sw2 = Node( 0b0000,  0b0100, 0b0000, 0b0000);
     Node se2 = Node(  0b1000, 0b0000, 0b0000, 0b0000);
     Node test_node2 =  Node(&nw2, &ne2, &sw2, &se2, 3);
 
 
     test_node.eval();
-    
+    test_node.res.ptr->display();
+
     std::cout << "2nd test node:" << std::endl;
 
-    test_node2.eval();
+    Node *result_node2 = test_node2.eval();
 
-     std::cout << test_node.res.ptr <<  " " << test_node.ne.ptr << " " << test_node.sw.ptr << " " << test_node.se.ptr << " " << std::endl;
-    std::cout << test_node2.res.ptr <<  " " << test_node2.ne.ptr << " " << test_node2.sw.ptr << " " << test_node2.se.ptr << " " << std::endl;
+    //  std::cout << test_node.res.ptr <<  " " << test_node.ne.ptr << " " << test_node.sw.ptr << " " << test_node.se.ptr << " " << std::endl;
+    // std::cout << test_node2.res.ptr <<  " " << test_node2.ne.ptr << " " << test_node2.sw.ptr << " " << test_node2.se.ptr << " " << std::endl;
 
+    result_node2->res.ptr->display();
 //    nw.res.ptr = &nw;
 //     std::cout << "added " << &nw << std::endl;
 //     HASHTABLE.insert({nw, nw.res});
