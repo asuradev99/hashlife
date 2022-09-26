@@ -51,6 +51,8 @@ class Node {
         Node(Node*, Node*, Node*, Node*, int, const char*);
 
         Node* eval();
+        Node* clone();
+
         std::string display(int);
         void display_all(); 
         void setbit(int, int, int); 
@@ -123,15 +125,6 @@ namespace std {
 
 std::unordered_map<Node, Node*> HASHTABLE;
 
-// Node::Node(nodeptr nw, nodeptr ne, nodeptr sw, nodeptr se, int depth) {
-//     this->nw = nw;  
-//     this->ne = ne; 
-//     this->sw = sw; 
-//     this->se = se; 
-//     this->depth = depth;
-//     this->hash = 0;
-// }
-
 Node::Node(cells16 nw, cells16 ne, cells16 sw, cells16 se, const char* name) {
     this->nw.raw = nw;  
     this->ne.raw = ne; 
@@ -158,6 +151,9 @@ Node::Node(nodeptr nw, nodeptr ne, nodeptr sw, nodeptr se, int depth, const char
     this->depth = depth;
     this->hash = 0;
     this->name = name;
+}
+Node* Node::clone() {
+    return new Node(this->nw, this->ne, this->sw, this->se, this->depth, this->name);
 }
 Node* Node::eval() {
      
@@ -334,17 +330,17 @@ void Node::display_all() {
     }
 }
 
-Node* zero_extend(Node node, int n) {
+Node* zero_extend(Node node) {
     Node* zero_node = new Node(0, 0, 0, 0, "zero_node");
     int depth = node.depth;
-    for (int i = 3; i <= depth; i++) {
-        zero_node = new Node(zero_node, zero_node, zero_node, zero_node, i, "zero_node");
+    for (int i = 3; i < depth; i++) {
+        zero_node = new Node(zero_node->clone(), zero_node->clone(), zero_node->clone(), zero_node->clone(), i, "zero_node");
     }
 
-    Node* nw = new Node(zero_node, zero_node, zero_node, node.nw.ptr, depth, "nw");
-    Node* ne = new Node(zero_node, zero_node, node.ne.ptr, zero_node, depth, "ne");
-    Node* sw = new Node(zero_node, node.sw.ptr, zero_node, zero_node, depth, "sw");
-    Node* se = new Node(node.se.ptr, zero_node, zero_node, zero_node, depth, "se");
+    Node* nw = new Node(zero_node->clone(), zero_node->clone(), zero_node->clone(), node.nw.ptr, depth, "nw");
+    Node* ne = new Node(zero_node->clone(), zero_node->clone(), node.ne.ptr, zero_node->clone(), depth, "ne");
+    Node* sw = new Node(zero_node->clone(), node.sw.ptr, zero_node->clone(), zero_node->clone(), depth, "sw");
+    Node* se = new Node(node.se.ptr, zero_node->clone(), zero_node->clone(), zero_node->clone(), depth, "se");
 
     return new Node(nw, ne, sw, se, depth + 1, "final");
 
@@ -359,7 +355,6 @@ Node* zero_extend(Node node, int n) {
 11  11
 00  00
 */
-
 int main() {
     // Node nw = Node( 0b0000,  0b0000, 0b0000, 0b0010);
     // Node ne = Node( 0b0000, 0b0000, 0b1010, 0b0000);
@@ -374,14 +369,14 @@ int main() {
     // Node se2 = Node(  0b1000, 0b0000, 0b0000, 0b0000);
     // Node test_node2 =  Node(&nw2, &ne2, &sw2, &se2, 3);
 
-    Node nw = Node( 0b0000,  0b0000, 0b0000, 0b0010, "nm");
+    Node nw = Node( 0b1111,  0b1111, 0b1111, 0b1111, "nm");
     Node ne = Node( 0b0000, 0b0000, 0b1010, 0b0000, "ne");
     Node sw = Node( 0b0000,  0b0100, 0b0000, 0b0000, "sw");
     Node se = Node(  0b1000, 0b0000, 0b0000, 0b0000, "se");
     Node* test_node = new Node(&nw, &ne, &sw, &se, 3, "test_node");
-    Node test_noder =  Node(&test_node, &test_node, &test_node, &test_node, 4, "test_noder");
-    Node test_noderr =  Node(&test_noder, &test_noder, &test_noder, &test_noder, 5, "test_noderr");
-    Node test_noderrr =  Node(&test_noderr, &test_noderr, &test_noderr, &test_noderr, 6, "test_noderrr");
+   // Node test_noder =  Node(&test_node, &test_node, &test_node, &test_node, 4, "test_noder");
+  //  Node test_noderr =  Node(&test_noder, &test_noder, &test_noder, &test_noder, 5, "test_noderr");
+   //  Node test_noderrr =  Node(&test_noderr, &test_noderr, &test_noderr, &test_noderr, 6, "test_noderrr");
     // Node nm2 = Node( 0b0000,  0b0000, 0b0000, 0b1111, "nm2");
     // Node ne2 = Node( 0b0000, 0b1000, 0b1010, 0b0000, "ne2");
     // Node sw2 = Node( 0b0000,  0b0100, 0b0000, 0b0000, "sw2");
@@ -400,8 +395,50 @@ int main() {
     // test_node2.eval();
 
     // test_node2.res.ptr->display();
-    test_node = zero_extend(test_node);
+    Node* test = zero_extend(nw);
+    test->setbit(0, 0, 1);
+    test->display_all();
+    Node* test2 = zero_extend(*test);
+    test2->setbit(0, 0, 1);
+    test2->display_all();
 
 }
 
 
+// class Node begin
+//    Node NW, NE, SW, SE
+//    Node RESULT
+// end
+
+// Node.evaluate() begin
+//     if this.isLeaf() then
+//         this.evaluateCellbyCell()
+//     else
+//         //Start by recursively evaluating children nodes (See Figure 5)
+//         this.NW.evaluate()
+//         this.NE.evaluate()
+//         this.SW.evaluate()
+//         this.SE.evaluate()
+
+//         //Fill in the gaps by creating five more nodes (See Figure 6)
+//         Node NM = new Node();
+//         nm = nm->eval();
+//         std::cout << "DEBUG: nm res: " << nm->res.raw << std::endl;
+
+//         Node *wm = new Node(nw_ptr->sw, nw_ptr->se,  sw_ptr->nw, sw_ptr->ne, depth - 1, "wm");
+//         wm = wm->eval();
+
+
+//         Node *em = new Node(ne_ptr->sw, ne_ptr->se,  se_ptr->nw, se_ptr->ne, depth - 1, "em");
+//         em = em->eval();
+
+//         Node *sm = new Node(sw_ptr->ne, se_ptr->nw,  sw_ptr->se, se_ptr->sw, depth - 1, "sm");
+//         sm = sm->eval(); 
+
+//         Node *cc = new Node(nw_ptr->se, ne_ptr->sw,  sw_ptr->ne, se_ptr->nw, depth - 1, "cc");
+//         cc = cc->eval();
+//     end if
+// end 
+//     //
+
+    
