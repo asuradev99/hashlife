@@ -1,9 +1,10 @@
 #include <bitset> 
 #include <iostream>
 #include <unordered_map>
-   #include <cmath>
-    #include <string>
+#include <cmath>
+#include <string>
 #include <stdexcept>
+
 using cells16 =  unsigned short int;
 class Node; 
 
@@ -52,7 +53,9 @@ class Node {
         Node* eval();
         std::string display(int);
         void display_all(); 
-
+        void setbit(int, int, int); 
+        void separate_stream(cells16 stream);
+        void zero_extend(int);
         bool operator == (const Node &other) const { 
             if(other.depth != this->depth) {
                  std::cout << "yay you prevented a segfault good job" << std::endl;
@@ -106,12 +109,12 @@ namespace std {
                // node.hash = 48;
 
       }
-    //   node.hash = (hash<int>()(nw_hash) \
-    //             ^ (((hash<int>()(ne_hash) << 1)))\
-    //             ^ (hash<int>()(sw_hash) << 2)\
-    //             ^ (hash<int>()(se_hash) << 3));
-         node.hash = nw_hash + ne_hash + sw_hash + se_hash; 
-         std::cout << "hash computation: " << nw_hash << " + " << ne_hash << " + " << sw_hash<< " + " << se_hash << " = " << node.hash << std::endl;
+      node.hash = (hash<int>()(nw_hash) \
+                ^ (((hash<int>()(ne_hash) << 1)))\
+                ^ (hash<int>()(sw_hash) << 2)\
+                ^ (hash<int>()(se_hash) << 3));
+        //  node.hash = nw_hash + ne_hash + sw_hash + se_hash; 
+        //  std::cout << "hash computation: " << nw_hash << " + " << ne_hash << " + " << sw_hash<< " + " << se_hash << " = " << node.hash << std::endl;
 
       return node.hash;
     }
@@ -282,11 +285,69 @@ std::string Node::display(int r) {
         }
     }
 }
+void Node::separate_stream(cells16 stream) {
+    this->nw.raw = ((stream & 0b1100000000000000) >> 12) | ((stream & 0b0000110000000000) >> 10); 
+    this->ne.raw = ((stream & 0b0011000000000000) >> 10) | ((stream & 0b0000001100000000) >> 8);
+    this->sw.raw = ((stream & 0b0000000011000000) >> 4) | ((stream & 0b0000000000001100) >> 2);
+    this->se.raw = ((stream & 0b0000000000110000) >> 2) | ((stream & 0b0000000000000011));
+}
+void Node::setbit(int row, int col, int bit) {
+   
+
+    if(this->depth == 2) {
+        cells16 stream =  (cells16) join_leaf(this->nw.raw, this->ne.raw, this->sw.raw, this->se.raw); 
+        int index = row * 4 + col; 
+        int output = bit << (15 - index); 
+       
+        if(bit == 1) {
+            stream = stream | (bit << (15 - index));
+            this->separate_stream(stream);
+
+        } else if (bit == 0) {
+            stream = stream & (bit << (15 - index));
+        } else {
+            std::cout << "Error: bit to set must be 0 or 1";
+        }
+    } else {
+        int n = pow(2, this->depth);
+        int sr = row % (n / 2);
+        int sc = col % (n / 2);
+        if(row >= n / 2) {
+            if(col >= n / 2) {
+                this->se.ptr->setbit(sr, sc, bit);
+            } else {
+                this->sw.ptr->setbit(sr, sc, bit);
+            }
+        } else {
+            if(col >= n / 2) {
+                this->ne.ptr->setbit(sr, sc, bit);
+            } else {
+                this->nw.ptr->setbit(sr, sc, bit);
+            }
+        }
+    }
+}
 
 void Node::display_all() {
     for(int i = 0; i < pow(2, this->depth); i++) {
         std::cout << this->display(i) <<  std::endl;
     }
+}
+
+Node* zero_extend(Node node, int n) {
+    Node* zero_node = new Node(0, 0, 0, 0, "zero_node");
+    int depth = node.depth;
+    for (int i = 3; i <= depth; i++) {
+        zero_node = new Node(zero_node, zero_node, zero_node, zero_node, i, "zero_node");
+    }
+
+    Node* nw = new Node(zero_node, zero_node, zero_node, node.nw.ptr, depth, "nw");
+    Node* ne = new Node(zero_node, zero_node, node.ne.ptr, zero_node, depth, "ne");
+    Node* sw = new Node(zero_node, node.sw.ptr, zero_node, zero_node, depth, "sw");
+    Node* se = new Node(node.se.ptr, zero_node, zero_node, zero_node, depth, "se");
+
+    return new Node(nw, ne, sw, se, depth + 1, "final");
+
 }
 // void Node::eval() {
 
@@ -317,7 +378,7 @@ int main() {
     Node ne = Node( 0b0000, 0b0000, 0b1010, 0b0000, "ne");
     Node sw = Node( 0b0000,  0b0100, 0b0000, 0b0000, "sw");
     Node se = Node(  0b1000, 0b0000, 0b0000, 0b0000, "se");
-    Node test_node =  Node(&nw, &ne, &sw, &se, 3, "test_node");
+    Node* test_node = new Node(&nw, &ne, &sw, &se, 3, "test_node");
     Node test_noder =  Node(&test_node, &test_node, &test_node, &test_node, 4, "test_noder");
     Node test_noderr =  Node(&test_noder, &test_noder, &test_noder, &test_noder, 5, "test_noderr");
     Node test_noderrr =  Node(&test_noderr, &test_noderr, &test_noderr, &test_noderr, 6, "test_noderrr");
@@ -327,19 +388,19 @@ int main() {
     // Node se2 = Node(  0b1000, 0b0000, 0b0000, 0b0000, "se2");
     // Node test_node2 =  Node(&nm2, &ne2, &sw2, &se2, 3, "test_node2");
 
-
-    test_noderrr.display_all();
-    test_noderrr.eval();
+   // test_noderrr.display_all();
+   // test_noderrr.eval();
    // test_node.res.ptr->display_all(); 
 
     // test_node.eval();
-    test_noderrr.res.ptr->display_all();
-
+    // test_noderrr.res.ptr->display_all();
+    
     // std::cout << "2nd test node:" << std::endl;
 
     // test_node2.eval();
 
     // test_node2.res.ptr->display();
+    test_node = zero_extend(test_node);
 
 }
 
