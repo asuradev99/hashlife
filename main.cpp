@@ -21,7 +21,6 @@ typedef union {
     (((sw & 0b0011) <<2 ) | (se & 0b0011))
 
 
-//bruh asudhashdkajhskdlhlkasjdh
 bool life8(cells16 neighbor_bits, int center_bit) {
     int count = 0;
     int center = (neighbor_bits & (1 << center_bit));
