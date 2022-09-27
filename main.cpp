@@ -4,6 +4,7 @@
 #include <cmath>
 #include <string>
 #include <stdexcept>
+#include <fstream>
 
 using cells16 =  unsigned short int;
 class Node; 
@@ -49,13 +50,15 @@ class Node {
         Node(Node*, Node*, Node*, Node*, int);
 
         Node* eval();
-        Node* clone();
+        Node* clone_shallow();
+        Node* clone_deep();
 
         std::string display(int);
         void display_all(); 
         void setbit(int, int, int); 
         void separate_stream(cells16 stream);
         void zero_extend(int);
+        void load_pattern(const char*);
         bool operator == (const Node &other) const { 
             if(other.depth != this->depth) {
                 return false; //prevent segmentation fault
@@ -145,9 +148,19 @@ Node::Node(nodeptr nw, nodeptr ne, nodeptr sw, nodeptr se, int depth) {
     this->depth = depth;
     this->hash = 0;
 }
-Node* Node::clone() {
+Node* Node::clone_deep() {
+    if(this->depth == 2) {
+        return new Node(this->nw, this->ne, this->sw, this->se, this->depth);
+    } else {
+        return new Node(this->nw.ptr->clone_deep(), this->ne.ptr->clone_deep(), this->sw.ptr->clone_deep(), this->se.ptr->clone_deep(), this->depth);
+    }
+}
+
+
+Node* Node::clone_shallow() {
     return new Node(this->nw, this->ne, this->sw, this->se, this->depth);
 }
+
 Node* Node::eval() {
      
     //create temporary squares
@@ -286,36 +299,72 @@ void Node::display_all() {
     }
 }
 
-Node* zero_extend(Node node) {
+Node* build_zero(int depth) {
     Node* zero_node = new Node(0, 0, 0, 0);
-    int depth = node.depth;
-    for (int i = 3; i < depth; i++) {
-        zero_node = new Node(zero_node->clone(), zero_node->clone(), zero_node->clone(), zero_node->clone(), i);
+    for (int i = 2; i < depth; i++) {
+        zero_node = new Node(zero_node->clone_deep(), zero_node->clone_deep(), zero_node->clone_deep(), zero_node->clone_deep(), i + 1);
     }
-
-    Node* nw = new Node(zero_node->clone(), zero_node->clone(), zero_node->clone(), node.nw.ptr, depth);
-    Node* ne = new Node(zero_node->clone(), zero_node->clone(), node.ne.ptr, zero_node->clone(), depth);
-    Node* sw = new Node(zero_node->clone(), node.sw.ptr, zero_node->clone(), zero_node->clone(), depth);
-    Node* se = new Node(node.se.ptr, zero_node->clone(), zero_node->clone(), zero_node->clone(), depth);
-
-    return new Node(nw, ne, sw, se, depth + 1);
-
+    return zero_node;
 }
 
+Node* zero_extend(Node node) {
+    Node* zero_node = build_zero(node.depth - 1);
+    std::cout << node.depth << std::endl;
+    std::cout << zero_node->depth << std::endl;
+    Node* nw = new Node(zero_node->clone_shallow(), zero_node->clone_shallow(), zero_node->clone_shallow(), node.nw.ptr, node.depth);
+    Node* ne = new Node(zero_node->clone_shallow(), zero_node->clone_shallow(), node.ne.ptr, zero_node->clone_shallow(), node.depth);
+    Node* sw = new Node(zero_node->clone_shallow(), node.sw.ptr, zero_node->clone_shallow(), zero_node->clone_shallow(), node.depth);
+    Node* se = new Node(node.se.ptr, zero_node->clone_shallow(), zero_node->clone_shallow(), zero_node->clone_shallow(), node.depth);
+
+    return new Node(nw, ne, sw, se, node.depth + 1);
+
+}
+void Node::load_pattern(const char *name) {
+    std::fstream file_stream;
+    file_stream.open(name);
+    int n;
+    file_stream >> n;
+
+    if(n != 1 << this->depth) {
+        std::cout << "Error: wrong size: " << n << " " << (1 << this->depth) << " " << std::endl;
+    }
+    char c;
+    for(int i = 0; i < n; i++) {
+        for(int j = 0; j < n; j++) {
+            file_stream >> c;
+            if(c == 'b') {
+                this->setbit(i, j, 0);
+            } else if (c == 'o') {
+                this->setbit(i, j, 1);
+            } else {
+                std::cout << "Error: unknown character, skipping at "<< i << " " << j << std::endl;
+            }
+        }
+    }
+    
+
+}
 int main() {
 
     Node nw = Node( 0b1111,  0b1111, 0b1111, 0b1111);
     Node ne = Node( 0b0000, 0b0000, 0b1010, 0b0000);
     Node sw = Node( 0b0000,  0b0100, 0b0000, 0b0000);
     Node se = Node(  0b1000, 0b0000, 0b0000, 0b0000);
-    Node* test_node = new Node(&nw, &ne, &sw, &se, 3);
-   
-    //testing
-    Node* test = zero_extend(nw);
-    test->setbit(0, 0, 1);
-    test->display_all();
-    Node* test2 = zero_extend(*test);
-    test2->setbit(0, 0, 1);
-    test2->display_all();
+    
+    // Node* test = zero_extend(nw);
+    // test->setbit(0, 0, 1);
+    // test->display_all();
+    // Node* test2 = zero_extend(*test);
+    // test2->setbit(0, 0, 1);
+    // test2->display_all();
+    Node* test_node = build_zero(6);
+    std::cout << "Before load: " << std::endl;
+    test_node->display_all();
+    std::cout << test_node->depth;
+    test_node->load_pattern("pattern.rle.txt");
+    
+    test_node = zero_extend(*test_node);
+    test_node->eval();
+    test_node->res.ptr->display_all();
 }
 
