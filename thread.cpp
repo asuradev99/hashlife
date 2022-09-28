@@ -8,7 +8,7 @@
 #include <malloc.h>
 #include <future>
 #include <chrono>
-
+#include <shared_mutex>
 
 using cells16 =  unsigned short int;
 class Node; 
@@ -53,7 +53,6 @@ class Node {
         Node(cells16, cells16, cells16, cells16);
         Node(Node*, Node*, Node*, Node*, int);
 
-        Node* eval();
         Node* clone_shallow();
         Node* clone_deep();
 
@@ -118,14 +117,15 @@ namespace std {
     //             ^ (((hash<int>()(ne_hash) << 1)))\
     //             ^ (hash<int>()(sw_hash) << 2)\
     //             ^ (hash<int>()(se_hash) << 3));
-    node.hash = nw_hash + ne_hash + sw_hash + se_hash; 
-    //std::cout << "hash computation: " << nw_hash << " + " << ne_hash << " + " << sw_hash<< " + " << se_hash << " = " << node.hash << std::endl;
+          node.hash = nw_hash + ne_hash + sw_hash + se_hash; 
+        //  std::cout << "hash computation: " << nw_hash << " + " << ne_hash << " + " << sw_hash<< " + " << se_hash << " = " << node.hash << std::endl;
 
       return node.hash;
     }
   };
 }
-std::mutex hash_lock;
+
+std::shared_mutex hash_lock;
 std::unordered_map<Node, Node*> HASHTABLE;
 
 Node::Node(cells16 nw, cells16 ne, cells16 sw, cells16 se) {
@@ -165,66 +165,82 @@ Node* Node::clone_shallow() {
     return new Node(this->nw, this->ne, this->sw, this->se, this->depth);
 }
 
-Node* Node::eval() {
+Node* eval(Node* node) {
      
     //create temporary squares
-    if(this->depth > 2) {
-        this->nw.ptr = this->nw.ptr->eval();
-        this->ne.ptr = this->ne.ptr->eval();
-        this->sw.ptr = this->sw.ptr->eval();
-        this->se.ptr = this->se.ptr->eval();
+    if(node->depth > 2) {
+        if(node->depth == 10 || node->depth == 9) {
+            auto nw_result = std::async(std::launch::async, &eval, node->nw.ptr);
+            auto ne_result = std::async(std::launch::async, &eval, node->ne.ptr);
+            auto sw_result = std::async(std::launch::async, &eval, node->sw.ptr);
+            auto se_result = std::async(std::launch::async, &eval, node->se.ptr);
+
+            node->nw.ptr = nw_result.get();
+            node->ne.ptr = ne_result.get();
+            node->sw.ptr = sw_result.get();
+            node->se.ptr = se_result.get();
+        } else {
+            node->nw.ptr = eval(node->nw.ptr);
+            node->ne.ptr = eval(node->ne.ptr);
+            node->sw.ptr = eval(node->sw.ptr);
+            node->se.ptr = eval(node->se.ptr);
+        }
     } 
-    auto search = HASHTABLE.find(*this);
+    auto search = HASHTABLE.find(*node);
     if(search  != HASHTABLE.end()) {
         return search->second;
     } else {
-        if (depth > 2) {
-            Node* nw_ptr = this->nw.ptr;
-            Node* ne_ptr = this->ne.ptr;
-            Node* sw_ptr = this->sw.ptr;
-            Node* se_ptr = this->se.ptr;
-            int n = HASHTABLE.bucket_count();
+        if (node->depth > 2) {
+            Node* nw_ptr = node->nw.ptr;
+            Node* ne_ptr = node->ne.ptr;
+            Node* sw_ptr = node->sw.ptr;
+            Node* se_ptr = node->se.ptr;
           
-            Node *nm = new Node(nw_ptr->ne, ne_ptr->nw,  nw_ptr->se, ne_ptr->sw, depth - 1);
-            nm = nm->eval();
-
-            Node *wm = new Node(nw_ptr->sw, nw_ptr->se,  sw_ptr->nw, sw_ptr->ne, depth - 1);
-            wm = wm->eval();
-
-            Node *em = new Node(ne_ptr->sw, ne_ptr->se,  se_ptr->nw, se_ptr->ne, depth - 1);
-            em = em->eval();
-
-            Node *sm = new Node(sw_ptr->ne, se_ptr->nw,  sw_ptr->se, se_ptr->sw, depth - 1);
-            sm = sm->eval(); 
-
-            Node *cc = new Node(nw_ptr->se, ne_ptr->sw,  sw_ptr->ne, se_ptr->nw, depth - 1);
-            cc = cc->eval();
+            Node *nm = new Node(nw_ptr->ne, ne_ptr->nw,  nw_ptr->se, ne_ptr->sw, node->depth - 1);
+            Node *wm = new Node(nw_ptr->sw, nw_ptr->se,  sw_ptr->nw, sw_ptr->ne, node->depth - 1);
+            Node *em = new Node(ne_ptr->sw, ne_ptr->se,  se_ptr->nw, se_ptr->ne, node->depth - 1);
+            Node *sm = new Node(sw_ptr->ne, se_ptr->nw,  sw_ptr->se, se_ptr->sw, node->depth - 1);
+            Node *cc = new Node(nw_ptr->se, ne_ptr->sw,  sw_ptr->ne, se_ptr->nw, node->depth - 1);
+            
+            nm = eval(nm);
+            wm = eval(wm);
+            em = eval(em);
+            sm = eval(sm);
+            cc = eval(cc);
+            
             
             //compute inner squiare
-            Node *nw_inner = new Node(nw_ptr->res, nm->res, wm->res, cc->res, depth - 1);
-                nw_inner = nw_inner->eval();
-            Node *ne_inner = new Node(nm->res, ne_ptr->res, cc->res, em->res, depth - 1);
-                ne_inner = ne_inner->eval();
-            Node *sw_inner = new Node(wm->res, cc->res, sw_ptr->res, sm->res, depth - 1);
-                sw_inner = sw_inner->eval();
-            Node *se_inner = new Node(cc->res, em->res, sm->res, se_ptr->res, depth - 1);
-                se_inner = se_inner->eval();
+            Node *nw_inner = new Node(nw_ptr->res, nm->res, wm->res, cc->res, node->depth - 1);
+            Node *ne_inner = new Node(nm->res, ne_ptr->res, cc->res, em->res, node->depth - 1);
+            Node *sw_inner = new Node(wm->res, cc->res, sw_ptr->res, sm->res, node->depth - 1);
+            Node *se_inner = new Node(cc->res, em->res, sm->res, se_ptr->res, node->depth - 1);
 
-            Node *res_ = new Node(nw_inner->res, ne_inner->res, sw_inner->res, se_inner->res, depth - 1);
-            this->res.ptr = res_;
-            HASHTABLE.insert({*this, this});
-            return this;
+            
+            nw_inner = eval(nw_inner);
+            ne_inner = eval(ne_inner);
+            sw_inner = eval(sw_inner);
+            se_inner = eval(se_inner);
+            
+            Node *res_ = new Node(nw_inner->res, ne_inner->res, sw_inner->res, se_inner->res, node->depth - 1);
+            node->res.ptr = res_;
+            std::unique_lock lock(hash_lock);            
+            HASHTABLE.insert({*node, node});
+            return node;
         } else {
-            cells16 stream =  (cells16) join_leaf(this->nw.raw, this->ne.raw, this->sw.raw, this->se.raw);   
+            cells16 stream =  (cells16) join_leaf(node->nw.raw, node->ne.raw, node->sw.raw, node->se.raw);   
             std::hash<Node> hashm = std::hash<Node>();
-            hashm(*this);
+            hashm(*node);
             int _nw = life8(stream & 0b1110111011100000, 10);
             int _ne = life8(stream & 0b0111011101110000, 9);
             int _sw = life8(stream & 0b0000111011101110, 6);
             int _se = life8(stream & 0b0000011101110111, 5); 
-            this->res.raw =  ((((((_nw << 1) | _ne) << 1) | _sw) << 1) | _se);
-            HASHTABLE.insert({*this, this});
-            return this;
+            node->res.raw =  ((((((_nw << 1) | _ne) << 1) | _sw) << 1) | _se);
+            
+            std::unique_lock lock(hash_lock);            
+            HASHTABLE.insert({*node, node});
+        
+
+            return node;
         }
     }
 }
@@ -349,8 +365,8 @@ void Node::load_pattern(const char *name) {
 
 }
 int main() {
-    //std::cout << std::thread::hardware_concurrency() << std::endl;
-    //std::cout << HASHTABLE.max_size() << std::endl;
+  //  std::cout << std::thread::hardware_concurrency() << std::endl;
+  //  std::cout << HASHTABLE.max_size() << std::endl;
 
     Node nw = Node( 0b1111,  0b1111, 0b1111, 0b1111);
     Node ne = Node( 0b0000, 0b0000, 0b1010, 0b0000);
@@ -364,7 +380,7 @@ int main() {
     // test2->setbit(0, 0, 1);
     // // test2->display_all();
      Node* test_node = build_zero(10);
-     //std::cout << "After load: " << std::endl;
+    // std::cout << "After load: " << std::endl;
     // std::cout << test_node->depth;
      test_node->load_pattern("prime_calculator.rle.txt");
     // test_node->display_all();
@@ -377,13 +393,12 @@ int main() {
      using std::chrono::milliseconds;
 
      auto t1 = high_resolution_clock::now();
-     test_node->eval();;
+     eval(test_node);
      auto t2 = high_resolution_clock::now();
 
      duration<double, std::milli> ms_double = t2 - t1;
-     //test_node->res.ptr->display_all();
+    // test_node->res.ptr->display_all();
 
      std::cout << ms_double.count() << "ms\n";
 
 }
-
