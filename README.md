@@ -16,13 +16,13 @@ https://conwaylife.com/wiki/Run_Length_Encoded
 
 Here is information about the pattern files used in the experiment:
 
-| Pattern # | Pattern Size (N * N) | File Name |
+| Pattern # | Adjusted Pattern Size (N * N) | File Name |
 | --------- | -------------------- | --------- |
 | 1 | 32 | `popover.rle` |
 | 2 | 64 | `112p51extended.rle` |
 | 3 | 128 | `tubwithtal_synth.rle` |
 | 4 | 256 | `112p51_synth.rle` |
 | 5 | 512 | `109-still-lifes.rle` |
-| 6 | 1024 | `tubwithtal_synth.rle` |
+| 6 | 1024 | `prime_calculator.rle` |
 
 To view these pattern files, you can use the online GOL simulator and pattern viewer http://copy.sh/life/. To do this, download the desired pattern file, then on the website press "Import" and select the downloaded file. 
